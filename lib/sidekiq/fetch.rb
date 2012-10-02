@@ -11,7 +11,7 @@ module Sidekiq
     include Sidekiq::Util
 
     TIMEOUT = 1
-
+       
     def initialize(mgr, queues, strict)
       @mgr = mgr
       @strictly_ordered_queues = strict
@@ -76,6 +76,7 @@ module Sidekiq
           conn.smembers('queues')
         }.map { |q| "queue:#{q}" }
         @queues+=(queues-@queues)
+        @queues-=(@queues-queues) 
         queue=@queues.pop
         @queues.insert(0,queue)
         queues=@queues.dup
