@@ -70,8 +70,24 @@ module Sidekiq
     # to honor weights and avoid queue starvation.
     def queues_cmd
       return @unique_queues.dup << TIMEOUT if @strictly_ordered_queues
-      queues = @queues.sample(@unique_queues.size).uniq
-      queues.concat(@unique_queues - queues)
+      queues=[]
+      if Sidekiq.options[:round_robin]
+        queues=Sidekiq.redis { |conn|
+          conn.smembers('queues')
+        }.map { |q| "queue:#{q}" }
+        @queues+=(queues-@queues)
+        queue=@queues.pop
+        @queues.insert(0,queue)
+        queues=@queues.dup
+        puts "Popping #{queue}, order: #{queues.join(",")}"
+      elsif Sidekiq.options[:dynamic_queues]
+        queues=Sidekiq.redis { |conn|
+          conn.smembers('queues')
+        }.map { |q| "queue:#{q}" }
+        queues.concat(@unique_queues - queues)
+      else
+        queues = @queues.sample(@unique_queues.size).uniq
+      end
       queues << TIMEOUT
     end
   end

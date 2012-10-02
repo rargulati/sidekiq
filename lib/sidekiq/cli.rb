@@ -131,7 +131,13 @@ module Sidekiq
     end
 
     def validate!
-      options[:queues] << 'default' if options[:queues].empty?
+      if options[:dynamic_queues]
+        options[:queues]=Sidekiq.redis { |conn|
+          conn.smembers('queues')
+        }
+      else
+        options[:queues] << 'default' if options[:queues].empty?
+      end
 
       if !File.exist?(options[:require]) ||
          (File.directory?(options[:require]) && !File.exist?("#{options[:require]}/config/application.rb"))
@@ -185,6 +191,14 @@ module Sidekiq
         o.on '-V', '--version', "Print version and exit" do |arg|
           puts "Sidekiq #{Sidekiq::VERSION}"
           die(0)
+        end
+       
+        o.on '-d', '--dynamic', "Allow sidekiq to process dynamically created queues" do |arg|
+          opts[:dynamic_queues] = true
+        end
+
+        o.on '-n', '--roundrobin', "Process queues in a round robin fashion" do |arg|
+          opts[:round_robin] = true
         end
       end
 

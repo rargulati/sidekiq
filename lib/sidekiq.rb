@@ -23,6 +23,8 @@ module Sidekiq
     :require => '.',
     :environment => nil,
     :timeout => 8,
+    :round_robin=>false,
+    :dynamic_queues=>false,
   }
 
   def self.options
