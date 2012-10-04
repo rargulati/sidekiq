@@ -12,11 +12,12 @@ module Sidekiq
 
     TIMEOUT = 1
        
-    def initialize(mgr, queues, strict)
+    def initialize(mgr, queues, strict, ignored_queues=[])
       @mgr = mgr
       @strictly_ordered_queues = strict
       @queues = queues.map { |q| "queue:#{q}" }
       @unique_queues = @queues.uniq
+      @ignored_queues = ignored_queues
     end
 
     # Fetching is straightforward: the Manager makes a fetch
@@ -74,13 +75,30 @@ module Sidekiq
       if Sidekiq.options[:round_robin]
         queues=Sidekiq.redis { |conn|
           conn.smembers('queues')
-        }.map { |q| "queue:#{q}" }
+        }
+        queues=(queues-@ignored_queues).map { |q| "queue:#{q}" }
+        if queues.size >= 1
         @queues+=(queues-@queues)
-        @queues-=(@queues-queues) 
+        @queues-=(@queues-queues)
         queue=@queues.pop
         @queues.insert(0,queue)
         queues=@queues.dup
         puts "Popping #{queue}, order: #{queues.join(",")}"
+        #clean out empty queues
+        
+          Sidekiq.redis do |conn|
+                queues.each { |q|
+                  if conn.llen(q) == 0
+                    Sidekiq.redis do |conn|
+                      conn.del(q)
+                      conn.srem("queues",q.gsub("queue:",""))
+                    end
+                  end
+                }
+          end
+        else
+          queues=["nil"]
+        end
       elsif Sidekiq.options[:dynamic_queues]
         queues=Sidekiq.redis { |conn|
           conn.smembers('queues')
