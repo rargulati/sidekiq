@@ -42,6 +42,16 @@ module Sidekiq
       end
       alias_method :perform_at, :perform_in
 
+      def queue_async(queue,*args)
+        client_push('queue' => queue, 'class' => self, 'args' => args)
+      end
+
+      def queue_in(queue,interval, *args)
+        int = interval.to_f
+        ts = (int < 1_000_000_000 ? Time.now.to_f + int : int)
+        client_push('queue' => queue, 'class' => self, 'args' => args, 'at' => ts)
+      end
+      alias_method :queue_at, :queue_in
       ##
       # Allows customization for this type of Worker.
       # Legal options:
