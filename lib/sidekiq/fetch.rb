@@ -75,7 +75,7 @@ module Sidekiq
         queues=Sidekiq.redis { |conn|
           conn.smembers('queues')
         }
-        queues=(queues-@ignored_queues).map { |q| "queue:#{q}" }
+        queues=queues.map { |q| "queue:#{q}" }
         if queues.size >= 1
         @queues+=(queues-@queues)
         @queues-=(@queues-queues)
