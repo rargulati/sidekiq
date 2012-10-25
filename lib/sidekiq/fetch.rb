@@ -15,8 +15,9 @@ module Sidekiq
     def initialize(mgr, queues, strict, ignored_queues=[])
       @mgr = mgr
       @strictly_ordered_queues = strict
-      @queues = (queues-ignored_queues).map { |q| "queue:#{q}" }
+      @queues = queues.map { |q| "queue:#{q}" }
       @unique_queues = @queues.uniq
+      @ignored_queues = ignored_queues
     end
 
     # Fetching is straightforward: the Manager makes a fetch
@@ -75,7 +76,7 @@ module Sidekiq
         queues=Sidekiq.redis { |conn|
           conn.smembers('queues')
         }
-        queues=queues.map { |q| "queue:#{q}" }
+        queues=(queues-@ignored_queues).map { |q| "queue:#{q}" }
         if queues.size >= 1
         @queues+=(queues-@queues)
         @queues-=(@queues-queues)
