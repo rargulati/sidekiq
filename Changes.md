@@ -1,3 +1,27 @@
+HEAD
+-----------
+
+- Inline testing runs the client middleware before executing jobs [#465]
+- Web UI can now remove jobs from queue. [#466, dleung]
+- Web UI can now show the full message, not just 100 chars [#464, dleung]
+- Add APIs for manipulating the retry and job queues.  See sidekiq/api. [#457]
+
+
+2.4.0
+-----------
+
+- ActionMailer.delay.method now only tries to deliver if method returns a valid message.
+- Logging now uses "MSG-#{Job ID}", not a random msg ID
+- Allow generic Redis provider as environment variable. [#443]
+- Add ability to customize sidekiq\_options with delay calls [#450]
+
+```ruby
+Foo.delay(:retry => false).bar
+Foo.delay(:retry => 10).bar
+Foo.delay(:timeout => 10.seconds).bar
+Foo.delay_for(5.minutes, :timeout => 10.seconds).bar
+```
+
 2.3.3
 -----------
 
