@@ -37,14 +37,14 @@ class TestApi < MiniTest::Unit::TestCase
     end
 
     it 'shows empty retries' do
-      r = Sidekiq::Retries.new
+      r = Sidekiq::RetrySet.new
       assert_equal 0, r.size
     end
 
     it 'can enumerate retries' do
       add_retry
 
-      r = Sidekiq::Retries.new
+      r = Sidekiq::RetrySet.new
       assert_equal 1, r.size
       array = r.to_a
       assert_equal 1, array.size
@@ -53,12 +53,12 @@ class TestApi < MiniTest::Unit::TestCase
       assert_equal 'ApiWorker', retri.klass
       assert_equal 'default', retri.queue
       assert_equal 'bob', retri.jid
-      assert_in_delta Time.now.to_f, retri.retry_at.to_f, 0.01
+      assert_in_delta Time.now.to_f, retri.at.to_f, 0.01
     end
 
     it 'can delete retries' do
       add_retry
-      r = Sidekiq::Retries.new
+      r = Sidekiq::RetrySet.new
       assert_equal 1, r.size
       r.map(&:delete)
       assert_equal 0, r.size
