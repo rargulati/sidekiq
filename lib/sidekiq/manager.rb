@@ -18,7 +18,6 @@ module Sidekiq
     trap_exit :processor_died
 
     def initialize(options={})
-      puts "Ignored queues: "<<options[:ignored_queues].join(",")
       logger.debug { options.inspect }
       @count = options[:concurrency] || 25
       @done_callback = nil
