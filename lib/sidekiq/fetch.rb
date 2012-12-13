@@ -33,12 +33,10 @@ module Sidekiq
         return if Sidekiq::Fetcher.done?
 
         begin
-          queue = nil
-          msg = nil
-          Sidekiq.redis { |conn| queue, msg = conn.blpop(*queues_cmd) }
+          queue, msg = Sidekiq.redis { |conn| conn.blpop(*queues_cmd) }
 
           if msg
-            @mgr.assign!(msg, queue.gsub(/.*queue:/, ''))
+            @mgr.async.assign(msg, queue.gsub(/.*queue:/, ''))
           else
             after(0) { fetch }
           end
@@ -70,7 +68,6 @@ module Sidekiq
     # recreate the queue command each time we invoke Redis#blpop
     # to honor weights and avoid queue starvation.
     def queues_cmd
-      return @unique_queues.dup << TIMEOUT if @strictly_ordered_queues
       queues=[]
       if Sidekiq.options[:round_robin]
         queues=Sidekiq.redis { |conn|
@@ -92,6 +89,7 @@ module Sidekiq
         }.map { |q| "queue:#{q}" }
         queues.concat(@unique_queues - queues)
       else
+        return @unique_queues.dup << TIMEOUT if @strictly_ordered_queues
         queues = @queues.sample(@unique_queues.size).uniq
       end
       queues << TIMEOUT

@@ -12,7 +12,7 @@ end
 trap 'USR1' do
   Sidekiq.logger.info "Received USR1, no longer accepting new work"
   mgr = Sidekiq::CLI.instance.manager
-  mgr.stop! if mgr
+  mgr.async.stop if mgr
 end
 
 trap 'TTIN' do
@@ -75,17 +75,19 @@ module Sidekiq
       logger.info "Running in #{RUBY_DESCRIPTION}"
       logger.info Sidekiq::LICENSE
 
+      Sidekiq::Stats::History.cleanup
+
       @manager = Sidekiq::Manager.new(options)
       poller = Sidekiq::Scheduled::Poller.new
       begin
         logger.info 'Starting processing, hit Ctrl-C to stop'
-        @manager.start!
-        poller.poll!(true)
+        @manager.async.start
+        poller.async.poll(true)
         sleep
       rescue Interrupt
         logger.info 'Shutting down'
-        poller.terminate! if poller.alive?
-        @manager.stop!(:shutdown => true, :timeout => options[:timeout])
+        poller.async.terminate if poller.alive?
+        @manager.async.stop(:shutdown => true, :timeout => options[:timeout])
         @manager.wait(:shutdown)
         # Explicitly exit so busy Processor threads can't block
         # process shutdown.
@@ -126,9 +128,21 @@ module Sidekiq
         require 'sidekiq/rails'
         require File.expand_path("#{options[:require]}/config/environment.rb")
         ::Rails.application.eager_load!
+        options[:tag] ||= default_tag
       else
         require options[:require]
       end
+    end
+
+    def default_tag
+      dir = ::Rails.root
+      name = File.basename(dir)
+      if name.to_i != 0 && prevdir = File.dirname(dir) # Capistrano release directory?
+        if File.basename(prevdir) == 'releases'
+          return File.basename(File.dirname(prevdir))
+        end
+      end
+      name
     end
 
     def validate!
@@ -157,8 +171,7 @@ module Sidekiq
       @parser = OptionParser.new do |o|
         o.on "-q", "--queue QUEUE[,WEIGHT]...", "Queues to process with optional weights" do |arg|
           queues_and_weights = arg.scan(/([\w\.-]+),?(\d*)/)
-          queues_and_weights.each {|queue_and_weight| parse_queues(opts, *queue_and_weight)}
-          opts[:strict] = queues_and_weights.collect(&:last).none? {|weight| weight != ''}
+          parse_queues opts, queues_and_weights
         end
 
         o.on "-v", "--verbose", "Print more verbose output" do
@@ -170,7 +183,11 @@ module Sidekiq
         end
 
         o.on '-t', '--timeout NUM', "Shutdown timeout" do |arg|
-          opts[:timeout] = arg.to_i
+          opts[:timeout] = Integer(arg)
+        end
+
+        o.on '-g', '--tag TAG', "Process tag for procline" do |arg|
+          opts[:tag] = arg
         end
 
         o.on '-r', '--require [PATH|DIR]', "Location of Rails application with workers or file to require" do |arg|
@@ -178,7 +195,7 @@ module Sidekiq
         end
 
         o.on '-c', '--concurrency INT', "processor threads to use" do |arg|
-          opts[:concurrency] = arg.to_i
+          opts[:concurrency] = Integer(arg)
         end
 
         o.on '-P', '--pidfile PATH', "path to pidfile" do |arg|
@@ -224,13 +241,17 @@ module Sidekiq
       opts = {}
       if cli[:config_file] && File.exist?(cli[:config_file])
         opts = YAML.load(ERB.new(IO.read(cli[:config_file])).result)
-        queues = opts.delete(:queues) || []
-        queues.each { |name, weight| parse_queues(opts, name, weight) }
+        parse_queues opts, opts.delete(:queues) || []
       end
       opts
     end
 
-    def parse_queues(opts, q, weight)
+    def parse_queues(opts, queues_and_weights)
+      queues_and_weights.each {|queue_and_weight| parse_queue(opts, *queue_and_weight)}
+      opts[:strict] = queues_and_weights.all? {|_, weight| weight.to_s.empty? }
+    end
+
+    def parse_queue(opts, q, weight=nil)
       [weight.to_i, 1].max.times do
        (opts[:queues] ||= []) << q
       end

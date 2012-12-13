@@ -18,6 +18,7 @@ module Sidekiq
     trap_exit :processor_died
 
     def initialize(options={})
+      puts "Ignored queues: "<<options[:ignored_queues].join(",")
       logger.debug { options.inspect }
       @count = options[:concurrency] || 25
       @done_callback = nil
@@ -27,7 +28,7 @@ module Sidekiq
       @busy = []
       @fetcher = Fetcher.new(current_actor, options[:queues], !!options[:strict], options[:ignored_queues])
       @ready = @count.times.map { Processor.new_link(current_actor) }
-      procline
+      procline(options[:tag] ? "#{options[:tag]} " : '')
     end
 
     def stop(options={})
@@ -37,19 +38,11 @@ module Sidekiq
 
         @done = true
         Sidekiq::Fetcher.done!
-        @fetcher.terminate! if @fetcher.alive?
+        @fetcher.async.terminate if @fetcher.alive?
 
         logger.info { "Shutting down #{@ready.size} quiet workers" }
         @ready.each { |x| x.terminate if x.alive? }
         @ready.clear
-
-        logger.debug { "Clearing workers in redis" }
-        Sidekiq.redis do |conn|
-          workers = conn.smembers('workers')
-          workers.each do |name|
-            conn.srem('workers', name) if name =~ /:#{process_id}-/
-          end
-        end
 
         return after(0) { signal(:shutdown) } if @busy.empty?
         logger.info { "Pausing up to #{timeout} seconds to allow workers to finish..." }
@@ -108,7 +101,7 @@ module Sidekiq
           processor = @ready.pop
           @in_progress[processor.object_id] = [msg, queue]
           @busy << processor
-          processor.process!(msg, queue)
+          processor.async.process(msg, queue)
         end
       end
     end
@@ -123,6 +116,12 @@ module Sidekiq
           logger.info("Still waiting for #{@busy.size} busy workers")
 
           Sidekiq.redis do |conn|
+            logger.debug { "Clearing workers in redis" }
+            workers = conn.smembers('workers')
+            workers.each do |name|
+              conn.srem('workers', name) if name =~ /:#{process_id}-/
+            end
+
             @busy.each do |processor|
               # processor is an actor proxy and we can't call any methods
               # that would go to the actor (since it's busy).  Instead
@@ -146,16 +145,16 @@ module Sidekiq
       raise "BUG: No processors, cannot continue!" if @ready.empty? && @busy.empty?
       raise "No ready processor!?" if @ready.empty?
 
-      @fetcher.fetch!
+      @fetcher.async.fetch
     end
 
     def stopped?
       @done
     end
 
-    def procline
-      $0 = "sidekiq #{Sidekiq::VERSION} [#{@busy.size} of #{@count} busy]#{stopped? ? ' stopping' : ''}"
-      after(5) { procline }
+    def procline(tag)
+      $0 = "sidekiq #{Sidekiq::VERSION} #{tag}[#{@busy.size} of #{@count} busy]#{stopped? ? ' stopping' : ''}"
+      after(5) { procline(tag) }
     end
   end
 end

@@ -30,11 +30,28 @@ class TestClient < MiniTest::Unit::TestCase
       assert_raises ArgumentError do
         Sidekiq::Client.push('foo', :class => 'Foo', :noargs => [1, 2])
       end
+
+      assert_raises ArgumentError do
+        Sidekiq::Client.push('queue' => 'foo', 'class' => MyWorker, 'noargs' => [1, 2])
+      end
+
+      assert_raises ArgumentError do
+        Sidekiq::Client.push('queue' => 'foo', 'class' => 42, 'args' => [1, 2])
+      end
+
     end
 
     it 'pushes messages to redis' do
       @redis.expect :rpush, 1, ['queue:foo', String]
       pushed = Sidekiq::Client.push('queue' => 'foo', 'class' => MyWorker, 'args' => [1, 2])
+      assert pushed
+      assert_equal 24, pushed.size
+      @redis.verify
+    end
+
+    it 'pushes messages to redis using a String class' do
+      @redis.expect :rpush, 1, ['queue:foo', String]
+      pushed = Sidekiq::Client.push('queue' => 'foo', 'class' => 'MyWorker', 'args' => [1, 2])
       assert pushed
       assert_equal 24, pushed.size
       @redis.verify
@@ -105,6 +122,11 @@ class TestClient < MiniTest::Unit::TestCase
       count = Sidekiq::Client.push_bulk('class' => QueuedWorker, 'args' => (1..1_000).to_a.map { |x| Array(x) })
       assert_equal 1_000, count
     end
+    it 'can push a large set of jobs at once using a String class' do
+      a = Time.now
+      count = Sidekiq::Client.push_bulk('class' => 'QueuedWorker', 'args' => (1..1_000).to_a.map { |x| Array(x) })
+      assert_equal 1_000, count
+    end
   end
 
   class BaseWorker
@@ -115,6 +137,9 @@ class TestClient < MiniTest::Unit::TestCase
   end
   class BWorker < BaseWorker
     sidekiq_options 'retry' => 'b'
+  end
+  class CWorker < BaseWorker
+    sidekiq_options 'retry' => 2
   end
 
   describe 'client middleware' do
@@ -138,7 +163,7 @@ class TestClient < MiniTest::Unit::TestCase
   end
 
   describe 'inheritance' do
-    it 'should inherit sidekiq options' do
+    it 'inherits sidekiq options' do
       assert_equal 'base', AWorker.get_sidekiq_options['retry']
       assert_equal 'b', BWorker.get_sidekiq_options['retry']
     end
@@ -147,6 +172,10 @@ class TestClient < MiniTest::Unit::TestCase
   describe 'item normalization' do
     it 'defaults retry to true' do
       assert_equal true, Sidekiq::Client.normalize_item('class' => QueuedWorker, 'args' => [])['retry']
+    end
+
+    it "does not normalize numeric retry's" do
+      assert_equal 2, Sidekiq::Client.normalize_item('class' => CWorker, 'args' => [])['retry']
     end
   end
 end

@@ -1,3 +1,48 @@
+2.6.0
+-----------
+
+- Enable live polling for every section in Web UI
+- Add Stats API
+- Add Stats::History API
+- Add Dashboard to WEB UI with live and historical stat graphs
+
+2.5.4
+-----------
+
+- `Sidekiq::Client.push` now accepts the worker class as a string so the
+  Sidekiq client does not have to load your worker classes at all.  [#524]
+- `Sidekiq::Client.push_bulk` now works with inline testing.
+- **Really** fix status icon in Web UI this time.
+- Add "Delete All" and "Retry All" buttons to Retries in Web UI
+
+
+2.5.3
+-----------
+
+- Small Web UI fixes
+- Add `delay_until` so you can delay jobs until a specific timestamp:
+
+```ruby
+Auction.delay_until(@auction.ends_at).close(@auction.id)
+```
+
+This is identical to the existing Sidekiq::Worker method, `perform_at`.
+
+2.5.2
+-----------
+
+- Remove asset pipeline from Web UI for much faster, simpler runtime.  [#499, #490, #481]
+- Add -g option so the procline better identifies a Sidekiq process, defaults to File.basename(Rails.root). [#486]
+
+    sidekiq 2.5.1 myapp [0 of 25 busy]
+
+- Add splay to retry time so groups of failed jobs don't fire all at once. [#483]
+
+2.5.1
+-----------
+
+- Fix issues with core\_ext
+
 2.5.0
 -----------
 

@@ -43,7 +43,7 @@ module Sidekiq
 
         # delayed_job uses the same basic formula
         DEFAULT_MAX_RETRY_ATTEMPTS = 25
-        DELAY = proc { |count| (count ** 4) + 15 }
+        DELAY = proc { |count| (count ** 4) + 15 + (rand(30)*(count+1)) }
 
         def call(worker, msg, queue)
           yield
@@ -68,7 +68,7 @@ module Sidekiq
             msg['error_backtrace'] = e.backtrace[0..msg['backtrace'].to_i]
           end
 
-          if count <= max_retry_attempts
+          if count < max_retry_attempts
             delay = DELAY.call(count)
             logger.debug { "Failure! Retry #{count} in #{delay} seconds" }
             retry_at = Time.now.to_f + delay
